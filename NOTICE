@@ -1,0 +1,22 @@
+gobacktest
+Copyright (c) 2026 Florinel Chis
+Licensed under the MIT License (see LICENSE).
+
+This product bundles the following third-party components:
+
+------------------------------------------------------------------------
+TradingView Lightweight Charts™ v5.2.0
+Copyright (c) 2026 TradingView, Inc.
+Licensed under the Apache License, Version 2.0:
+    https://www.apache.org/licenses/LICENSE-2.0
+Vendored (verbatim) at:
+    report/assets/lightweight-charts.standalone.production.js
+and embedded into every generated report.html. The bundle retains its
+own Apache-2.0 license header.
+------------------------------------------------------------------------
+
+The following Go module dependency is used (not vendored; resolved via
+go.mod, license travels with the module):
+
+  github.com/markcheno/go-talib — MIT License (used by the indicators and
+  lib packages; not imported by the core engine).

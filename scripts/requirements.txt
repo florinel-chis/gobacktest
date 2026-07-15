@@ -1,0 +1,2 @@
+yfinance>=1.0
+backtesting>=0.3

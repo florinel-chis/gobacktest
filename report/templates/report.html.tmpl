@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<title>{{.Title}} — gobacktest</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: #fafafa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #333; }
+.wrap { display: flex; height: 100vh; }
+#chart { flex: 1 1 auto; min-width: 0; background: #fff; border-right: 1px solid #e8e8e8; }
+#stats {
+  flex: 0 0 260px;
+  padding: 20px 16px;
+  overflow-y: auto;
+  background: #fff;
+  border-left: 1px solid #e8e8e8;
+}
+#stats h1 {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  color: #111;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #7e57c2;
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid #f2f2f2;
+  font-size: .78rem;
+  line-height: 1.4;
+}
+.row:last-child { border-bottom: none; }
+.k { color: #666; flex: 0 0 auto; padding-right: 8px; }
+.v { color: #111; font-variant-numeric: tabular-nums; font-weight: 500; text-align: right; }
+@media (prefers-color-scheme: dark) {
+  html, body { background: #131313; color: #c3c2b7; }
+  #chart { background: #1a1a19; border-right-color: #2a2a28; }
+  #stats { background: #1a1a19; border-left-color: #2a2a28; }
+  #stats h1 { color: #fff; }
+  .row { border-bottom-color: #262625; }
+  .k { color: #9a998f; }
+  .v { color: #fff; }
+}
+</style>
+<script>{{.LWCJS}}</script>
+</head>
+<body>
+<div class="wrap">
+  <div id="chart"></div>
+  <aside id="stats"></aside>
+</div>
+<script id="payload" type="application/json">{{.DataJSON}}</script>
+<script>
+const D = JSON.parse(document.getElementById('payload').textContent);
+const L = LightweightCharts;
+// Theme-aware: follow the OS light/dark preference. Candle/series colours work
+// on both surfaces; only the chart surface, text, grid and separators switch.
+const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+const theme = dark
+  ? { bg: '#1a1a19', text: '#c3c2b7', grid: '#242422', sep: '#2f2f2d' }
+  : { bg: '#ffffff', text: '#333333', grid: '#f4f4f4', sep: '#e0e0e0' };
+const chart = L.createChart(document.getElementById('chart'), {
+  layout: {
+    background: { type: 'solid', color: theme.bg },
+    textColor: theme.text,
+    panes: { separatorColor: theme.sep }
+  },
+  grid: { vertLines: { color: theme.grid }, horzLines: { color: theme.grid } },
+  timeScale: { timeVisible: false, rightOffset: 4 },
+  rightPriceScale: { borderVisible: false },
+});
+
+// Pane 0: candles + overlay indicators
+const candles = chart.addSeries(L.CandlestickSeries,
+  { upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350' }, 0);
+candles.setData(D.ohlc);
+
+D.indicators.filter(i => i.overlay).forEach(ind => {
+  const s = chart.addSeries(L.LineSeries, { color: ind.color, lineWidth: 1, priceLineVisible: false }, 0);
+  s.setData(ind.data);
+});
+
+// Pane 1: volume
+let pane = 1;
+const vol = chart.addSeries(L.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '' }, pane);
+vol.setData(D.volume);
+const volPane = pane++;
+
+// Pane 2: equity curve
+const eq = chart.addSeries(L.LineSeries, { color: '#7e57c2', lineWidth: 2 }, pane);
+eq.setData(D.equity);
+const eqPane = pane++;
+
+// Pane 3: drawdown
+const dd = chart.addSeries(L.AreaSeries, {
+  lineColor: '#ef5350',
+  topColor: 'rgba(239,83,80,.35)',
+  bottomColor: 'rgba(239,83,80,0)'
+}, pane);
+dd.setData(D.drawdown);
+const ddPane = pane++;
+
+// Non-overlay indicators: each in its own synced pane, labelled by name.
+const indPanes = [];
+D.indicators.filter(i => !i.overlay).forEach(ind => {
+  const s = chart.addSeries(L.LineSeries, { color: ind.color, lineWidth: 1 }, pane);
+  s.setData(ind.data);
+  if (L.createTextWatermark) {
+    L.createTextWatermark(chart.panes()[pane], {
+      horzAlign: 'left', vertAlign: 'top',
+      lines: [{ text: ind.name, color: ind.color, fontSize: 11 }],
+    });
+  }
+  indPanes.push(pane);
+  pane++;
+});
+
+// Pane heights: price pane ~50%, all sub-panes share the rest (adapts to any
+// number of indicator sub-panes so none dominates like an unsized default).
+const P = chart.panes();
+const subPanes = [volPane, eqPane, ddPane, ...indPanes];
+const sub = 0.15;
+if (P[0]) P[0].setStretchFactor(Math.max(1, subPanes.length) * sub);
+subPanes.forEach(i => { if (P[i]) P[i].setStretchFactor(sub); });
+
+// Trade markers
+const markers = D.trades.flatMap(t => [
+  { time: t.entryTime, position: t.isLong ? 'belowBar' : 'aboveBar', color: t.isLong ? '#26a69a' : '#ef5350', shape: t.isLong ? 'arrowUp' : 'arrowDown', text: 'In' },
+  { time: t.exitTime,  position: t.isLong ? 'aboveBar' : 'belowBar', color: '#787b86', shape: t.isLong ? 'arrowDown' : 'arrowUp', text: (t.pl >= 0 ? '+' : '') + t.pl.toFixed(0) },
+].filter(m => m.time)).sort((a, b) => a.time < b.time ? -1 : (a.time > b.time ? 1 : 0));
+L.createSeriesMarkers(candles, markers);
+
+chart.timeScale().fitContent();
+
+// Stats panel — title rendered safely via createTextNode to prevent HTML injection
+const statsEl = document.getElementById('stats');
+const h1 = document.createElement('h1');
+h1.appendChild(document.createTextNode(D.title));
+statsEl.appendChild(h1);
+statsEl.insertAdjacentHTML('beforeend', D.stats.map(r =>
+  '<div class="row"><span class="k">' + r.label + '</span><span class="v">' + r.value + '</span></div>'
+).join(''));
+</script>
+</body>
+</html>

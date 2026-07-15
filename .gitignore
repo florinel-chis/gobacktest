@@ -1,0 +1,12 @@
+# Go
+bin/
+*.test
+*.out
+report.html
+
+# Python fixture venv
+.venv/
+__pycache__/
+
+# OS
+.DS_Store
