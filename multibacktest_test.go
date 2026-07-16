@@ -65,6 +65,38 @@ func TestMultiBacktestMatchesIndividualRuns(t *testing.T) {
 	}
 }
 
+// TestMultiBacktestSharedDataset passes the SAME *Data pointer for every slot.
+// Each run mutates per-run state (bar-view length, indicator columns), so
+// without a per-run clone concurrent runs corrupt each other. All results must
+// match a solo run of the same dataset. Run under -race to catch data races.
+func TestMultiBacktestSharedDataset(t *testing.T) {
+	shared := aaplSlice(t, 0, 250)
+
+	want, err := New(aaplSlice(t, 0, 250), smaFactory()(), multiOpts()).Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mb := NewMultiBacktest([]*Data{shared, shared, shared, shared}, smaFactory(), multiOpts()).Workers(4)
+	results, err := mb.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, got := range results {
+		if got.FinalEquity != want.FinalEquity {
+			t.Errorf("run %d: FinalEquity=%v want %v", i, got.FinalEquity, want.FinalEquity)
+		}
+		if len(got.Trades) != len(want.Trades) {
+			t.Errorf("run %d: len(Trades)=%d want %d", i, len(got.Trades), len(want.Trades))
+		}
+	}
+	// The shared dataset must still expose its full bar view afterwards, so it
+	// stays usable by the caller (e.g. for Compute or another run).
+	if shared.Len() != shared.FullLen() {
+		t.Errorf("shared dataset view length %d != full length %d after Run", shared.Len(), shared.FullLen())
+	}
+}
+
 func TestMultiBacktestStatsAndMean(t *testing.T) {
 	datasets := []*Data{ramp(60), ramp(90), ramp(120)}
 	mb := NewMultiBacktest(datasets, func() Strategy { return &buyAndHold{} }, multiOpts())

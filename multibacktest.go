@@ -40,10 +40,12 @@ func (m *MultiBacktest) Workers(n int) *MultiBacktest {
 // An empty datasets slice returns (nil slice, nil error) — there is nothing to
 // run and nothing to report as an error.
 //
-// Race safety: each worker calls build() to obtain its own Strategy and runs
-// New(datasets[i], strat, opts).Run() — datasets are read-only during a run (no
-// clone is needed, unlike Optimize, because each dataset is used exactly once).
-// Results are written into a pre-allocated slice at the worker's assigned index.
+// Race safety: each worker calls build() to obtain its own Strategy and runs a
+// per-run clone of datasets[i] — like Optimize — because a run mutates the
+// dataset's bar-view length and indicator columns. Cloning makes it safe to
+// pass the same *Data in several slots (or keep using it after Run); the
+// underlying OHLCV slices are shared read-only, so clones are cheap. Results
+// are written into a pre-allocated slice at the worker's assigned index.
 func (m *MultiBacktest) Run() ([]*Result, error) {
 	if len(m.datasets) == 0 {
 		return nil, nil
@@ -73,7 +75,7 @@ func (m *MultiBacktest) Run() ([]*Result, error) {
 			defer wg.Done()
 			for i := range ch {
 				strat := m.build()
-				bt := New(m.datasets[i], strat, m.opts)
+				bt := New(m.datasets[i].clone(), strat, m.opts)
 				res, err := bt.Run()
 				results[i] = res
 				errs[i] = err
