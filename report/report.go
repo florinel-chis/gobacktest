@@ -84,6 +84,7 @@ func Generate(data *backtest.Data, result *backtest.Result, stats backtest.Stats
 // reportData is the JSON payload embedded in the HTML report.
 type reportData struct {
 	Title      string        `json:"title"`
+	Intraday   bool          `json:"intraday"`
 	OHLC       []ohlc        `json:"ohlc"`
 	Volume     []vp          `json:"volume"`
 	Equity     []vp          `json:"equity"`
@@ -93,9 +94,15 @@ type reportData struct {
 	Stats      []statRow     `json:"stats"`
 }
 
+// timeKey values are what Lightweight Charts accepts as series time: a
+// "yyyy-mm-dd" string for daily-or-coarser bars, or an int64 Unix timestamp
+// for intraday bars (date-only keys would collapse all same-day bars onto a
+// single point).
+type timeKey = any
+
 // ohlc is one candlestick bar.
 type ohlc struct {
-	Time  string  `json:"time"`
+	Time  timeKey `json:"time"`
 	Open  float64 `json:"open"`
 	High  float64 `json:"high"`
 	Low   float64 `json:"low"`
@@ -105,7 +112,7 @@ type ohlc struct {
 // vp is a value-point used for line / histogram series.
 // Color is omitted when empty (volume bars are colored per-bar).
 type vp struct {
-	Time  string  `json:"time"`
+	Time  timeKey `json:"time"`
 	Value float64 `json:"value"`
 	Color string  `json:"color,omitempty"`
 }
@@ -120,8 +127,8 @@ type indSeries struct {
 
 // tradeMarker carries the entry/exit info for one closed trade.
 type tradeMarker struct {
-	EntryTime  string  `json:"entryTime"`
-	ExitTime   string  `json:"exitTime"`
+	EntryTime  timeKey `json:"entryTime"`
+	ExitTime   timeKey `json:"exitTime"`
 	EntryPrice float64 `json:"entryPrice"`
 	ExitPrice  float64 `json:"exitPrice"`
 	PL         float64 `json:"pl"`
@@ -156,13 +163,28 @@ var palette = []string{
 
 func buildReport(data *backtest.Data, result *backtest.Result, stats backtest.Stats, opts Options) reportData {
 	bars := data.Bars()
-	const timeFmt = "2006-01-02"
+
+	// Sub-daily bars need Unix-timestamp time keys — with date-only keys every
+	// bar of one session would share the same key and collapse in the chart.
+	intraday := false
+	for i := 1; i < len(bars); i++ {
+		if bars[i].Time.Sub(bars[i-1].Time) < 24*time.Hour {
+			intraday = true
+			break
+		}
+	}
+	tkey := func(t time.Time) timeKey {
+		if intraday {
+			return t.Unix()
+		}
+		return t.Format("2006-01-02")
+	}
 
 	// OHLC + Volume
 	ohlcSlice := make([]ohlc, len(bars))
 	volSlice := make([]vp, len(bars))
 	for i, b := range bars {
-		ts := b.Time.Format(timeFmt)
+		ts := tkey(b.Time)
 		ohlcSlice[i] = ohlc{
 			Time:  ts,
 			Open:  b.Open,
@@ -177,16 +199,10 @@ func buildReport(data *backtest.Data, result *backtest.Result, stats backtest.St
 		volSlice[i] = vp{Time: ts, Value: b.Volume, Color: color}
 	}
 
-	// Build a time→index lookup for indicators (full bar index).
-	timeIdx := make(map[string]int, len(bars))
-	for i, b := range bars {
-		timeIdx[b.Time.Format(timeFmt)] = i
-	}
-
 	// Equity curve.
 	eqSlice := make([]vp, len(result.EquityCurve))
 	for i, p := range result.EquityCurve {
-		eqSlice[i] = vp{Time: p.Time.Format(timeFmt), Value: p.Equity}
+		eqSlice[i] = vp{Time: tkey(p.Time), Value: p.Equity}
 	}
 
 	// Drawdown (computed from equity curve; value <= 0 %).
@@ -200,7 +216,7 @@ func buildReport(data *backtest.Data, result *backtest.Result, stats backtest.St
 		if runMax > 0 {
 			dd = (p.Equity/runMax - 1) * 100
 		}
-		ddSlice[i] = vp{Time: p.Time.Format(timeFmt), Value: dd}
+		ddSlice[i] = vp{Time: tkey(p.Time), Value: dd}
 	}
 
 	// Indicators.
@@ -234,7 +250,7 @@ func buildReport(data *backtest.Data, result *backtest.Result, stats backtest.St
 			if math.IsNaN(v) {
 				continue
 			}
-			pts = append(pts, vp{Time: b.Time.Format(timeFmt), Value: v})
+			pts = append(pts, vp{Time: tkey(b.Time), Value: v})
 		}
 
 		indSlices = append(indSlices, indSeries{
@@ -255,10 +271,10 @@ func buildReport(data *backtest.Data, result *backtest.Result, stats backtest.St
 			IsLong:     t.Size > 0,
 		}
 		if !t.EntryTime.IsZero() {
-			tm.EntryTime = t.EntryTime.Format(timeFmt)
+			tm.EntryTime = tkey(t.EntryTime)
 		}
 		if !t.ExitTime.IsZero() {
-			tm.ExitTime = t.ExitTime.Format(timeFmt)
+			tm.ExitTime = tkey(t.ExitTime)
 		}
 		tradeSlice = append(tradeSlice, tm)
 	}
@@ -307,6 +323,7 @@ func buildReport(data *backtest.Data, result *backtest.Result, stats backtest.St
 
 	return reportData{
 		Title:      opts.Title,
+		Intraday:   intraday,
 		OHLC:       ohlcSlice,
 		Volume:     volSlice,
 		Equity:     eqSlice,

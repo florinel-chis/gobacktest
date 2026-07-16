@@ -71,7 +71,7 @@ const chart = L.createChart(document.getElementById('chart'), {
     panes: { separatorColor: theme.sep }
   },
   grid: { vertLines: { color: theme.grid }, horzLines: { color: theme.grid } },
-  timeScale: { timeVisible: false, rightOffset: 4 },
+  timeScale: { timeVisible: !!D.intraday, rightOffset: 4 },
   rightPriceScale: { borderVisible: false },
 });
 

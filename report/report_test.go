@@ -116,6 +116,61 @@ func TestBuildReportAllNaNIndicatorSkipped(t *testing.T) {
 	}
 }
 
+// TestBuildReportIntradayTimestamps verifies that intraday bars keep distinct
+// time keys. Date-only formatting would collapse all same-day bars onto one
+// point, so sub-daily data must be emitted as Unix timestamps (which
+// Lightweight Charts accepts natively) and flagged so the time axis shows
+// clock times.
+func TestBuildReportIntradayTimestamps(t *testing.T) {
+	t0 := time.Date(2024, 1, 2, 9, 0, 0, 0, time.UTC)
+	times := []time.Time{t0, t0.Add(time.Hour), t0.Add(2 * time.Hour)}
+	d, _ := backtest.FromOHLCV(times,
+		[]float64{10, 11, 12}, []float64{12, 13, 14}, []float64{9, 10, 11},
+		[]float64{11, 12, 13}, []float64{100, 200, 300})
+	res := &backtest.Result{
+		EquityCurve: []backtest.EquityPoint{
+			{Time: times[0], Equity: 1000}, {Time: times[1], Equity: 1010}, {Time: times[2], Equity: 1020},
+		},
+		FinalEquity: 1020,
+		Trades: []backtest.Trade{
+			{Size: 1, EntryPrice: 10, ExitPrice: 13, PL: 3, EntryTime: times[0], ExitTime: times[2]},
+		},
+	}
+	rd := buildReport(d, res, backtest.Stats{}, Options{Title: "intraday"})
+	if !rd.Intraday {
+		t.Fatal("Intraday flag should be true for hourly bars")
+	}
+	seen := map[any]bool{}
+	for _, o := range rd.OHLC {
+		if seen[o.Time] {
+			t.Fatalf("duplicate time key %v — intraday bars collapsed", o.Time)
+		}
+		seen[o.Time] = true
+		if _, ok := o.Time.(int64); !ok {
+			t.Fatalf("intraday time should be a Unix timestamp, got %T (%v)", o.Time, o.Time)
+		}
+	}
+	if rd.Trades[0].EntryTime != any(times[0].Unix()) || rd.Trades[0].ExitTime != any(times[2].Unix()) {
+		t.Fatalf("trade marker times not Unix timestamps: %+v", rd.Trades[0])
+	}
+
+	// Daily data keeps the yyyy-mm-dd string keys and Intraday=false.
+	daily, _ := backtest.FromOHLCV(
+		[]time.Time{time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC), time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)},
+		[]float64{10, 11}, []float64{12, 13}, []float64{9, 10}, []float64{11, 12}, []float64{100, 200})
+	dres := &backtest.Result{
+		EquityCurve: []backtest.EquityPoint{{Time: daily.TimeAt(0), Equity: 1000}, {Time: daily.TimeAt(1), Equity: 1010}},
+		FinalEquity: 1010,
+	}
+	drd := buildReport(daily, dres, backtest.Stats{}, Options{Title: "daily"})
+	if drd.Intraday {
+		t.Fatal("Intraday flag should be false for daily bars")
+	}
+	if drd.OHLC[0].Time != "2024-01-02" {
+		t.Fatalf("daily time key = %v, want 2024-01-02", drd.OHLC[0].Time)
+	}
+}
+
 func TestGenerateWritesSelfContainedHTML(t *testing.T) {
 	d, _ := backtest.FromOHLCV(
 		[]time.Time{time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC), time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC)},
