@@ -62,6 +62,26 @@ func TestDataAddColumn(t *testing.T) {
 	}
 }
 
+func TestClonePreservesExtraColumns(t *testing.T) {
+	d := newTestData()
+	if err := d.AddColumn("sma", []float64{1, 2, 3}); err != nil {
+		t.Fatalf("AddColumn error: %v", err)
+	}
+	dc := d.clone()
+	col, ok := dc.Column("sma")
+	if !ok || col.Last() != 3 {
+		t.Fatalf("clone Column(sma) = %v, %v; want 3, true", col, ok)
+	}
+	// The clone's column map is independent: adding to the clone must not
+	// leak into the original (and vice versa).
+	if err := dc.AddColumn("only-clone", []float64{4, 5, 6}); err != nil {
+		t.Fatalf("AddColumn on clone: %v", err)
+	}
+	if _, ok := d.Column("only-clone"); ok {
+		t.Fatal("column added to clone leaked into the original")
+	}
+}
+
 func TestFromBars(t *testing.T) {
 	t0 := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
 	bars := []Bar{

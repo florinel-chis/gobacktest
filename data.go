@@ -74,9 +74,16 @@ func (d *Data) TimeAt(i int) time.Time { return d.time[i] }
 func (d *Data) FullLen() int { return d.fullLen() }
 
 // clone returns a shallow copy sharing the immutable OHLCV/time slices but with
-// an independent view length and a fresh indicator map — so parallel runs (e.g.
-// Optimize) never share mutable state. The OHLCV slices are read-only.
+// an independent view length and its own column map — so parallel runs (e.g.
+// Optimize, MultiBacktest) never share mutable state. Existing extra columns
+// are carried over (sharing their read-only backing slices) so strategies that
+// read Data.Column behave identically on the clone; only the map itself is
+// fresh, keeping per-run AddColumn calls isolated.
 func (d *Data) clone() *Data {
+	extra := make(map[string]Series, len(d.extra))
+	for name, s := range d.extra {
+		extra[name] = s
+	}
 	return &Data{
 		time:   d.time,
 		open:   d.open,
@@ -84,7 +91,7 @@ func (d *Data) clone() *Data {
 		low:    d.low,
 		close:  d.close,
 		volume: d.volume,
-		extra:  make(map[string]Series),
+		extra:  extra,
 		n:      d.fullLen(),
 	}
 }
