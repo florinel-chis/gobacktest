@@ -36,6 +36,7 @@ per site):
 | `report/heatmap.go:189` | G203 | `template.CSS(...)` — CSS built only from hardcoded N/A color constants; no user input |
 | `report/heatmap.go:197` | G203 | `template.CSS(...)` — CSS built only from hardcoded ramp color constants; no user input |
 | `report/heatmap_test.go:47` | G304 | `os.ReadFile(path)` — test-controlled temp path inside `t.TempDir()` |
+| `cmd/mlsignal/main.go` (`readCSV`) | G304 | `os.Open(path)` — path is the CLI-supplied `-csv` argument to a local example tool; not attacker-reachable |
 
 **Vendored asset:** Lightweight Charts v5.2.0 (Apache-2.0) — no known CVEs at
 time of writing. Re-check this table whenever the version is bumped.
