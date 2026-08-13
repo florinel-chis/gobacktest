@@ -170,6 +170,7 @@ make parity
 | [Getting started](docs/getting-started.md) | Install, minimal backtest, running locally |
 | [Data](docs/data.md) | `FromCSV`, `FromOHLCV`, `FromBars`, the `source` contract, `Series` model |
 | [Strategies](docs/strategies.md) | `Strategy` interface, `State` API, order lifecycle |
+| [ML signals](docs/ml-signals.md) | Backtesting an external model's per-bar signal (e.g. a Kronos dip-buy), with `strategies.SignalStrategy` and `cmd/mlsignal` |
 | [Indicators](docs/indicators.md) | All built-in indicators, composition, NaN warmup, crossovers |
 | [Statistics](docs/statistics.md) | `Compute`, all ~32 metrics, `Stats.String()` |
 | [Optimization](docs/optimization.md) | `Optimize`, build-factory pattern, grid/random/heatmap |

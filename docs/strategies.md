@@ -233,3 +233,17 @@ lib.TrailStop(st, s.atr.Last(), 3)
 
 A mutated `SL()`/`TP()` takes effect on the next bar's SL/TP check. The trade exits when the
 trailing stop is hit — no explicit `Close()` needed.
+
+---
+
+## Built-in strategies
+
+The `strategies` package ships a few ready-to-run types:
+
+- `AveragingGrid` — long-only averaging-down grid with per-lot take-profits.
+- `WilliamsROversold` — Williams %R oversold entries.
+- `SignalStrategy` — trades an externally-computed per-bar signal (long when
+  `Signal[bar] > 0`, exit after `Hold` bars). Use it to backtest any predictor
+  that emits one number per bar — an indicator rule, a screen, or a
+  machine-learning forecast. See [ML signals](ml-signals.md) for the full pattern
+  and a Kronos dip-buy case study, plus the runnable `cmd/mlsignal` example.
