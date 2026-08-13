@@ -241,7 +241,7 @@ trailing stop is hit — no explicit `Close()` needed.
 The `strategies` package ships a few ready-to-run types:
 
 - `AveragingGrid` — long-only averaging-down grid with per-lot take-profits.
-- `WilliamsR` — Williams %R oversold entries.
+- `WilliamsROversold` — Williams %R oversold entries.
 - `SignalStrategy` — trades an externally-computed per-bar signal (long when
   `Signal[bar] > 0`, exit after `Hold` bars). Use it to backtest any predictor
   that emits one number per bar — an indicator rule, a screen, or a
