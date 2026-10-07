@@ -26,7 +26,12 @@ type broker struct {
 	equity          []float64
 	lastClose       float64
 	i               int
-	contingentBuf   []*trade // reused snapshot buffer for processContingent (per-bar hot path)
+	// fillBar is the bar a fill being processed is stamped with, or -1 for the
+	// current bar. backtesting.py stamps a market order filled under
+	// trade_on_close with the bar that placed it (time_index = i - 1), the bar
+	// whose close is the fill price.
+	fillBar       int
+	contingentBuf []*trade // reused snapshot buffer for processContingent (per-bar hot path)
 }
 
 func newBroker(data *Data, opts Options) *broker {
@@ -48,6 +53,7 @@ func newBroker(data *Data, opts Options) *broker {
 		hedging:         opts.Hedging,
 		exclusiveOrders: opts.ExclusiveOrders,
 		equity:          make([]float64, data.fullLen()),
+		fillBar:         -1,
 	}
 	b.position = &Position{broker: b}
 	return b
@@ -133,8 +139,8 @@ func (b *broker) openTrade(size, price float64, sl, tp float64, tag any) {
 	t := &trade{
 		size:       size,
 		entryPrice: price,
-		entryBar:   b.i,
-		entryTime:  b.data.timeAt(b.i),
+		entryBar:   b.stampBar(),
+		entryTime:  b.data.timeAt(b.stampBar()),
 		sl:         sl,
 		tp:         tp,
 		tag:        tag,
@@ -144,11 +150,19 @@ func (b *broker) openTrade(size, price float64, sl, tp float64, tag any) {
 	b.trades = append(b.trades, t)
 }
 
+// stampBar is the bar index a fill is recorded at (see fillBar).
+func (b *broker) stampBar() int {
+	if b.fillBar >= 0 {
+		return b.fillBar
+	}
+	return b.i
+}
+
 // closeTradeAt closes a full trade at an explicit price/bar (for SL/TP fills).
 func (b *broker) closeTradeAt(t *trade, price float64) {
 	t.exitPrice = price
-	t.exitBar = b.i
-	t.exitTime = b.data.timeAt(b.i)
+	t.exitBar = b.stampBar()
+	t.exitTime = b.data.timeAt(t.exitBar)
 	t.exitComm = b.commissionCost(t.size, price)
 	b.cash += t.pl(price) - t.exitComm
 	b.closedTrades = append(b.closedTrades, t)
@@ -194,6 +208,8 @@ func (b *broker) processOrders() {
 
 	// Iterate a stable snapshot; build a fresh remaining list. Neither aliases
 	// b.orders, so mutations during exclusive handling cannot clobber iteration.
+	defer func() { b.fillBar = -1 }()
+
 	pending := append([]*order(nil), b.orders...)
 	remaining := make([]*order, 0, len(pending))
 	for idx, o := range pending {
@@ -216,6 +232,11 @@ func (b *broker) processOrders() {
 				remaining = append(remaining, o)
 				continue
 			}
+		}
+		// Market orders filled at the previous close are stamped with that bar.
+		b.fillBar = -1
+		if b.tradeOnClose && !o.contingent && o.limit == 0 && stopPrice == 0 && b.i > 0 {
+			b.fillBar = b.i - 1
 		}
 
 		var price float64
@@ -318,8 +339,8 @@ func (b *broker) closePortionAt(t *trade, portion, price float64) {
 		entryTime:  t.entryTime,
 		entryComm:  t.entryComm * portion,
 		exitPrice:  price,
-		exitBar:    b.i,
-		exitTime:   b.data.timeAt(b.i),
+		exitBar:    b.stampBar(),
+		exitTime:   b.data.timeAt(b.stampBar()),
 	}
 	closing.exitComm = b.commissionCost(closing.size, price)
 	b.cash += closing.pl(price) - closing.exitComm
