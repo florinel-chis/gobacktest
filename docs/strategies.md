@@ -207,6 +207,14 @@ type Options struct {
 }
 ```
 
+**`TradeOnClose`:** a market order placed in `Next` on bar *i* fills at bar *i*'s **close**
+instead of bar *i+1*'s open, and the trade records bar *i* as its entry (or exit) bar and
+time, the bar whose close it filled at. That matches backtesting.py's `trade_on_close`. It
+makes "buy on Friday" mean Friday's close, stamped Friday. Limit and stop orders,
+stop-loss/take-profit fills, and the end-of-data close from `FinalizeTrades` are unaffected:
+they fill on, and are stamped with, the bar where they trigger. An order placed on the
+final bar has no later bar to fill on.
+
 **Commission helpers:**
 
 ```go
